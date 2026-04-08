@@ -51,15 +51,6 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     line-height: 1.6;
     border-left: 3px solid #c9a96e;
 }
-.tag-pill {
-    display: inline-block;
-    background: #f0ebe3;
-    color: #7a6a55;
-    padding: 0.2rem 0.7rem;
-    border-radius: 20px;
-    font-size: 0.78rem;
-    margin: 0.15rem;
-}
 .tool-log {
     background: #f0f7ff;
     border-left: 3px solid #4a90d9;
@@ -69,18 +60,6 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
     color: #4a6fa5;
     margin: 0.2rem 0;
     font-family: monospace;
-}
-.starter-prompt {
-    background: white;
-    border: 1px solid #e8e0d5;
-    border-radius: 10px;
-    padding: 0.6rem 0.9rem;
-    font-size: 0.85rem;
-    color: #555;
-    cursor: pointer;
-    transition: all 0.2s;
-    width: 100%;
-    text-align: left;
 }
 .divider { border-top: 1px solid #f0ebe3; margin: 1rem 0; }
 .sidebar-header {
@@ -260,19 +239,65 @@ Your approach:
 Be warm, knowledgeable, and specific. You are a stylist, not a search engine.
 Always recommend at least one complete outfit. If a size is unavailable, find an alternative."""
 
+# ── Session state ──────────────────────────────────────────────────────────────
+if "messages" not in st.session_state:
+    st.session_state.messages = []
+if "history" not in st.session_state:
+    st.session_state.history = []
+if "api_key" not in st.session_state:
+    st.session_state.api_key = ""
+
+# ── History sanitizer ──────────────────────────────────────────────────────────
+def sanitize_history(history):
+    """Convert any Anthropic ContentBlock objects to plain serializable dicts."""
+    clean = []
+    for msg in history:
+        if isinstance(msg["content"], str):
+            clean.append(msg)
+        elif isinstance(msg["content"], list):
+            sanitized_blocks = []
+            for block in msg["content"]:
+                if isinstance(block, dict):
+                    sanitized_blocks.append(block)
+                elif hasattr(block, "type"):
+                    if block.type == "text":
+                        sanitized_blocks.append({"type": "text", "text": block.text})
+                    elif block.type == "tool_use":
+                        sanitized_blocks.append({
+                            "type": "tool_use",
+                            "id": block.id,
+                            "name": block.name,
+                            "input": block.input
+                        })
+                    elif block.type == "tool_result":
+                        sanitized_blocks.append({
+                            "type": "tool_result",
+                            "tool_use_id": block.tool_use_id,
+                            "content": block.content
+                        })
+            if sanitized_blocks:
+                clean.append({"role": msg["role"], "content": sanitized_blocks})
+        else:
+            continue
+    return clean
+
 # ── Agent runner ───────────────────────────────────────────────────────────────
 def run_stylist_agent(user_message, conversation_history, tool_log_placeholder):
-    client = anthropic.Anthropic(api_key=st.session_state.api_key)
+    client = anthropic.Anthropic(
+        api_key=st.secrets.get("ANTHROPIC_API_KEY", st.session_state.api_key)
+    )
     conversation_history.append({"role": "user", "content": user_message})
     tool_calls_made = []
 
     while True:
+        clean_history = sanitize_history(conversation_history)
+
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=4096,
             system=SYSTEM_PROMPT,
             tools=TOOLS,
-            messages=conversation_history
+            messages=clean_history
         )
 
         if response.stop_reason == "tool_use":
@@ -286,7 +311,11 @@ def run_stylist_agent(user_message, conversation_history, tool_log_placeholder):
                         unsafe_allow_html=True
                     )
                     result = TOOL_MAP[block.name](**block.input)
-                    tool_results.append({"type": "tool_result", "tool_use_id": block.id, "content": json.dumps(result)})
+                    tool_results.append({
+                        "type": "tool_result",
+                        "tool_use_id": block.id,
+                        "content": json.dumps(result)
+                    })
             conversation_history.append({"role": "user", "content": tool_results})
 
         elif response.stop_reason == "end_turn":
@@ -297,25 +326,22 @@ def run_stylist_agent(user_message, conversation_history, tool_log_placeholder):
         else:
             return "Something went wrong. Please try again.", conversation_history, tool_calls_made
 
-# ── Session state ──────────────────────────────────────────────────────────────
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-if "history" not in st.session_state:
-    st.session_state.history = []
-if "api_key" not in st.session_state:
-    st.session_state.api_key = ""
-
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
     st.markdown('<div class="sidebar-header">✨ StyleMind</div>', unsafe_allow_html=True)
     st.markdown("*Your AI Personal Stylist*")
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
-    api_key_input = st.text_input("Anthropic API Key", type="password",
-                                   placeholder="sk-ant-...",
-                                   value=st.session_state.api_key)
-    if api_key_input:
-        st.session_state.api_key = api_key_input
+    # Auto-load from Streamlit secrets if available (production)
+    if "ANTHROPIC_API_KEY" in st.secrets:
+        st.session_state.api_key = st.secrets["ANTHROPIC_API_KEY"]
+        st.success("✅ API key loaded", icon="🔑")
+    else:
+        # Fallback: manual entry (local dev only)
+        api_key_input = st.text_input("Anthropic API Key", type="password",
+                                       placeholder="sk-ant-...")
+        if api_key_input:
+            st.session_state.api_key = api_key_input
 
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     st.markdown("**Try asking about:**")
@@ -340,7 +366,8 @@ with st.sidebar:
     st.markdown("""
     <div style='font-size:0.78rem; color:#aaa; line-height:1.6'>
     <b>How it works</b><br>
-    StyleMind uses Agentic AI — it autonomously searches inventory, checks sizes, applies style rules, and builds complete outfits. Watch the tool calls appear as it thinks.
+    StyleMind uses Agentic AI — it autonomously searches inventory, checks sizes, applies style rules,
+    and builds complete outfits. Watch the tool calls appear as it thinks.
     </div>
     """, unsafe_allow_html=True)
 
@@ -359,17 +386,16 @@ for msg in st.session_state.messages:
     else:
         st.markdown(f'<div class="chat-assistant">{msg["content"]}</div>', unsafe_allow_html=True)
 
-# Pre-fill from sidebar button
+# Pre-fill from sidebar button clicks
 prefill_value = st.session_state.pop("prefill", "") if "prefill" in st.session_state else ""
 
 # Input row
-with st.container():
-    col1, col2 = st.columns([5, 1])
-    with col1:
-        user_input = st.text_input("", placeholder="e.g. Work dinner outfit, size M, pear body type, budget $200",
-                                    value=prefill_value, label_visibility="collapsed", key="input_box")
-    with col2:
-        send = st.button("Send →", type="primary", use_container_width=True)
+col1, col2 = st.columns([5, 1])
+with col1:
+    user_input = st.text_input("", placeholder="e.g. Work dinner outfit, size M, pear body type, budget $200",
+                                value=prefill_value, label_visibility="collapsed", key="input_box")
+with col2:
+    send = st.button("Send →", type="primary", use_container_width=True)
 
 # Handle send
 if (send or user_input) and user_input.strip():

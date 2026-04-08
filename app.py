@@ -246,10 +246,11 @@ if "history" not in st.session_state:
     st.session_state.history = []
 if "api_key" not in st.session_state:
     st.session_state.api_key = ""
+if "last_processed" not in st.session_state:
+    st.session_state.last_processed = ""
 
 # ── History sanitizer ──────────────────────────────────────────────────────────
 def sanitize_history(history):
-    """Convert any Anthropic ContentBlock objects to plain serializable dicts."""
     clean = []
     for msg in history:
         if isinstance(msg["content"], str):
@@ -332,12 +333,10 @@ with st.sidebar:
     st.markdown("*Your AI Personal Stylist*")
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
 
-    # Auto-load from Streamlit secrets if available (production)
     if "ANTHROPIC_API_KEY" in st.secrets:
         st.session_state.api_key = st.secrets["ANTHROPIC_API_KEY"]
-        st.success("✅ API key loaded", icon="🔑")
+        st.success("✅ Ready to style you!", icon="✨")
     else:
-        # Fallback: manual entry (local dev only)
         api_key_input = st.text_input("Anthropic API Key", type="password",
                                        placeholder="sk-ant-...")
         if api_key_input:
@@ -360,6 +359,7 @@ with st.sidebar:
     if st.button("🔄 New Conversation", use_container_width=True):
         st.session_state.messages = []
         st.session_state.history = []
+        st.session_state.last_processed = ""
         st.rerun()
 
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
@@ -397,11 +397,15 @@ with col1:
 with col2:
     send = st.button("Send →", type="primary", use_container_width=True)
 
-# Handle send
+# Handle send — guard with processing flag to prevent double execution on rerun
 if (send or user_input) and user_input.strip():
-    if not st.session_state.api_key:
+    if st.session_state.get("last_processed") == user_input:
+        pass  # Already handled this exact message, skip
+    elif not st.session_state.api_key:
         st.error("Please enter your Anthropic API key in the sidebar.")
     else:
+        st.session_state.last_processed = user_input
+
         st.session_state.messages.append({"role": "user", "content": user_input})
         st.markdown(f'<div class="chat-user">{user_input}</div>', unsafe_allow_html=True)
 

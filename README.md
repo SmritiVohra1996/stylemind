@@ -1,0 +1,1 @@
+An AI agent that acts like a personal stylist — it asks customers questions, reasons about their body type, occasion, budget, and current inventory, and proactively recommends complete outfits with explanations a human stylist would give.

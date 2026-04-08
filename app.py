@@ -71,7 +71,7 @@ html, body, [class*="css"] { font-family: 'Inter', sans-serif; }
 </style>
 """, unsafe_allow_html=True)
 
-# ── Inventory data ─────────────────────────────────────────────────────────────
+# ── Inventory ─────────────────────────────────────────────────────────────────
 INVENTORY = [
     {"id": "T001", "name": "White Linen Oversized Shirt", "category": "top", "color": "white",
      "price": 45, "sizes": ["XS","S","M","L"], "style_tags": ["casual","smart-casual","summer"],
@@ -126,7 +126,7 @@ INVENTORY = [
      "body_types": ["all"], "occasions": ["work","smart-casual","weekend"], "in_stock": True},
 ]
 
-# ── Tools ──────────────────────────────────────────────────────────────────────
+# ── Tool functions ─────────────────────────────────────────────────────────────
 def search_inventory(category=None, color=None, max_price=None, occasion=None, style_tag=None):
     results = INVENTORY.copy()
     if category: results = [i for i in results if i["category"] == category]
@@ -146,28 +146,27 @@ def check_size_availability(item_id, size):
 
 def get_style_advice(body_type, occasion, season=None):
     advice_db = {
-        "pear": {"tips": "Balance wider hips with structured shoulders. Wide-leg trousers and A-line skirts are your best friend. Draw attention upward with interesting necklines.",
+        "pear": {"tips": "Balance wider hips with structured shoulders. Wide-leg trousers and A-line skirts are your best friend.",
                  "best_items": ["wrap tops","peplum tops","wide-leg trousers","a-line skirts"]},
-        "hourglass": {"tips": "Celebrate your proportions with fitted styles and wrap silhouettes that follow your natural curves.",
-                      "best_items": ["wrap dresses","fitted tops","high-waist styles","bodycon styles"]},
-        "rectangle": {"tips": "Create the illusion of curves with ruching, peplums, and cinched waists. Layering adds great dimension.",
-                      "best_items": ["belted dresses","ruffled tops","a-line skirts","wrap styles"]},
-        "inverted-triangle": {"tips": "Balance broader shoulders with volume at the hips. A-line and full skirts add great proportion.",
-                              "best_items": ["wide-leg trousers","a-line skirts","v-necks","flared jeans"]},
+        "hourglass": {"tips": "Celebrate your proportions with fitted styles and wrap silhouettes.",
+                      "best_items": ["wrap dresses","fitted tops","high-waist styles"]},
+        "rectangle": {"tips": "Create curves with ruching, peplums, and cinched waists.",
+                      "best_items": ["belted dresses","ruffled tops","a-line skirts"]},
+        "inverted-triangle": {"tips": "Balance broader shoulders with volume at the hips.",
+                              "best_items": ["wide-leg trousers","a-line skirts","v-necks"]},
     }
     occasion_guidelines = {
-        "work": "Keep it polished. Neutral colors, structured pieces, modest hemlines.",
-        "date": "Show personality. One statement piece, well-fitted clothes, subtle elegance.",
-        "wedding-guest": "Avoid white or ivory. Midi length is safest. Look festive but not attention-stealing.",
-        "casual": "Comfort first — elevated basics with quality fabrics and good fit.",
-        "brunch": "Smart-casual with a fun element. Pastels, florals, or a statement accessory.",
-        "dinner": "Elegant but not over-dressed. A midi dress or smart trousers work perfectly.",
+        "work": "Polished neutrals, structured pieces, modest hemlines.",
+        "date": "One statement piece, well-fitted, subtle elegance.",
+        "wedding-guest": "Avoid white or ivory. Midi length is safest.",
+        "casual": "Elevated basics — quality fabrics, good fit.",
+        "brunch": "Smart-casual with a fun element.",
+        "dinner": "Elegant but not over-dressed.",
     }
-    body_advice = advice_db.get(body_type, {"tips": "Focus on fit above all else.", "best_items": ["well-fitted basics"]})
     return {
-        "body_type_advice": body_advice,
+        "body_type_advice": advice_db.get(body_type, {"tips": "Focus on fit.", "best_items": ["well-fitted basics"]}),
         "occasion_guideline": occasion_guidelines.get(occasion, "Dress appropriately and feel confident."),
-        "season_note": f"For {season}, prioritize {'breathable fabrics like linen and cotton' if season in ['spring','summer'] else 'layerable pieces and warmer fabrics'}." if season else ""
+        "season_note": f"For {season}, prioritize {'breathable fabrics' if season in ['spring','summer'] else 'layerable warmer fabrics'}." if season else ""
     }
 
 def build_complete_outfit(top_id=None, bottom_id=None, dress_id=None, shoes_id=None, outerwear_id=None):
@@ -183,14 +182,15 @@ def build_complete_outfit(top_id=None, bottom_id=None, dress_id=None, shoes_id=N
 
 def apply_budget_filter(items, max_budget):
     total = sum(i["price"] for i in items)
-    if total <= max_budget: return {"within_budget": True, "total": total, "items": items}
+    if total <= max_budget:
+        return {"within_budget": True, "total": total, "items": items}
     sorted_items = sorted(items, key=lambda x: x["price"])
     kept, running = [], 0
     for item in sorted_items:
         if running + item["price"] <= max_budget:
-            kept.append(item); running += item["price"]
-    return {"within_budget": False, "original_total": total,
-            "suggested_total": running, "suggested_items": kept}
+            kept.append(item)
+            running += item["price"]
+    return {"within_budget": False, "original_total": total, "suggested_total": running, "suggested_items": kept}
 
 TOOL_MAP = {
     "search_inventory": search_inventory,
@@ -201,28 +201,34 @@ TOOL_MAP = {
 }
 
 TOOLS = [
-    {"name": "search_inventory", "description": "Search clothing inventory by category, color, price, occasion, or style.",
+    {"name": "search_inventory",
+     "description": "Search clothing inventory by category, color, price, occasion, or style.",
      "input_schema": {"type": "object", "properties": {
          "category": {"type": "string", "description": "top, bottom, dress, shoes, or outerwear"},
-         "color": {"type": "string"}, "max_price": {"type": "number"},
+         "color": {"type": "string"},
+         "max_price": {"type": "number"},
          "occasion": {"type": "string", "description": "work, date, casual, brunch, wedding-guest, dinner"},
          "style_tag": {"type": "string"}}}},
-    {"name": "check_size_availability", "description": "Check if an item is available in the customer's size.",
-     "input_schema": {"type": "object", "properties": {
-         "item_id": {"type": "string"}, "size": {"type": "string"}},
-         "required": ["item_id", "size"]}},
-    {"name": "get_style_advice", "description": "Get styling tips for a body type and occasion.",
-     "input_schema": {"type": "object", "properties": {
-         "body_type": {"type": "string"}, "occasion": {"type": "string"}, "season": {"type": "string"}},
-         "required": ["body_type", "occasion"]}},
-    {"name": "build_complete_outfit", "description": "Combine items into a complete outfit and get total price.",
+    {"name": "check_size_availability",
+     "description": "Check if an item is available in the customer's size.",
+     "input_schema": {"type": "object",
+                      "properties": {"item_id": {"type": "string"}, "size": {"type": "string"}},
+                      "required": ["item_id", "size"]}},
+    {"name": "get_style_advice",
+     "description": "Get styling tips for a body type and occasion.",
+     "input_schema": {"type": "object",
+                      "properties": {"body_type": {"type": "string"}, "occasion": {"type": "string"}, "season": {"type": "string"}},
+                      "required": ["body_type", "occasion"]}},
+    {"name": "build_complete_outfit",
+     "description": "Combine items into a complete outfit and get total price.",
      "input_schema": {"type": "object", "properties": {
          "top_id": {"type": "string"}, "bottom_id": {"type": "string"},
          "dress_id": {"type": "string"}, "shoes_id": {"type": "string"}, "outerwear_id": {"type": "string"}}}},
-    {"name": "apply_budget_filter", "description": "Check if items fit within budget.",
-     "input_schema": {"type": "object", "properties": {
-         "items": {"type": "array", "items": {"type": "object"}}, "max_budget": {"type": "number"}},
-         "required": ["items", "max_budget"]}},
+    {"name": "apply_budget_filter",
+     "description": "Check if items fit within budget.",
+     "input_schema": {"type": "object",
+                      "properties": {"items": {"type": "array", "items": {"type": "object"}}, "max_budget": {"type": "number"}},
+                      "required": ["items", "max_budget"]}},
 ]
 
 SYSTEM_PROMPT = """You are StyleMind, an expert personal stylist AI for a premium fashion retailer.
@@ -239,15 +245,15 @@ Your approach:
 Be warm, knowledgeable, and specific. You are a stylist, not a search engine.
 Always recommend at least one complete outfit. If a size is unavailable, find an alternative."""
 
-# ── Session state ──────────────────────────────────────────────────────────────
+# ── Session state initialisation ───────────────────────────────────────────────
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "history" not in st.session_state:
     st.session_state.history = []
 if "api_key" not in st.session_state:
     st.session_state.api_key = ""
-if "last_processed" not in st.session_state:
-    st.session_state.last_processed = ""
+if "pending_input" not in st.session_state:
+    st.session_state.pending_input = ""
 
 # ── History sanitizer ──────────────────────────────────────────────────────────
 def sanitize_history(history):
@@ -256,33 +262,24 @@ def sanitize_history(history):
         if isinstance(msg["content"], str):
             clean.append(msg)
         elif isinstance(msg["content"], list):
-            sanitized_blocks = []
+            blocks = []
             for block in msg["content"]:
                 if isinstance(block, dict):
-                    sanitized_blocks.append(block)
+                    blocks.append(block)
                 elif hasattr(block, "type"):
                     if block.type == "text":
-                        sanitized_blocks.append({"type": "text", "text": block.text})
+                        blocks.append({"type": "text", "text": block.text})
                     elif block.type == "tool_use":
-                        sanitized_blocks.append({
-                            "type": "tool_use",
-                            "id": block.id,
-                            "name": block.name,
-                            "input": block.input
-                        })
+                        blocks.append({"type": "tool_use", "id": block.id,
+                                       "name": block.name, "input": block.input})
                     elif block.type == "tool_result":
-                        sanitized_blocks.append({
-                            "type": "tool_result",
-                            "tool_use_id": block.tool_use_id,
-                            "content": block.content
-                        })
-            if sanitized_blocks:
-                clean.append({"role": msg["role"], "content": sanitized_blocks})
-        else:
-            continue
+                        blocks.append({"type": "tool_result",
+                                       "tool_use_id": block.tool_use_id, "content": block.content})
+            if blocks:
+                clean.append({"role": msg["role"], "content": blocks})
     return clean
 
-# ── Agent runner ───────────────────────────────────────────────────────────────
+# ── Agent ──────────────────────────────────────────────────────────────────────
 def run_stylist_agent(user_message, conversation_history, tool_log_placeholder):
     client = anthropic.Anthropic(
         api_key=st.secrets.get("ANTHROPIC_API_KEY", st.session_state.api_key)
@@ -291,14 +288,12 @@ def run_stylist_agent(user_message, conversation_history, tool_log_placeholder):
     tool_calls_made = []
 
     while True:
-        clean_history = sanitize_history(conversation_history)
-
         response = client.messages.create(
             model="claude-sonnet-4-20250514",
             max_tokens=4096,
             system=SYSTEM_PROMPT,
             tools=TOOLS,
-            messages=clean_history
+            messages=sanitize_history(conversation_history)
         )
 
         if response.stop_reason == "tool_use":
@@ -306,26 +301,46 @@ def run_stylist_agent(user_message, conversation_history, tool_log_placeholder):
             tool_results = []
             for block in response.content:
                 if block.type == "tool_use":
-                    tool_calls_made.append(f"🔧 {block.name}({json.dumps(block.input, ensure_ascii=False)[:80]}...)")
+                    tool_calls_made.append(f"🔧 {block.name}({json.dumps(block.input)[:80]}...)")
                     tool_log_placeholder.markdown(
                         "\n".join(f'<div class="tool-log">{t}</div>' for t in tool_calls_made),
                         unsafe_allow_html=True
                     )
                     result = TOOL_MAP[block.name](**block.input)
-                    tool_results.append({
-                        "type": "tool_result",
-                        "tool_use_id": block.id,
-                        "content": json.dumps(result)
-                    })
+                    tool_results.append({"type": "tool_result",
+                                         "tool_use_id": block.id,
+                                         "content": json.dumps(result)})
             conversation_history.append({"role": "user", "content": tool_results})
 
         elif response.stop_reason == "end_turn":
-            final_text = "".join(block.text for block in response.content if hasattr(block, "text"))
+            final_text = "".join(b.text for b in response.content if hasattr(b, "text"))
             conversation_history.append({"role": "assistant", "content": final_text})
             return final_text, conversation_history, tool_calls_made
 
         else:
             return "Something went wrong. Please try again.", conversation_history, tool_calls_made
+
+# ── Process any pending message (set by form submit) ──────────────────────────
+def process_pending():
+    msg = st.session_state.pending_input.strip()
+    if not msg:
+        return
+    if not st.session_state.api_key:
+        st.session_state.pending_input = ""
+        return
+
+    st.session_state.pending_input = ""
+    st.session_state.messages.append({"role": "user", "content": msg})
+
+    tool_log = st.empty()
+    response, st.session_state.history, tools_used = run_stylist_agent(
+        msg, st.session_state.history, tool_log
+    )
+    tool_log.empty()
+
+    st.session_state.messages.append({"role": "assistant", "content": response})
+    if tools_used:
+        st.session_state.messages.append({"role": "tool_meta", "content": tools_used})
 
 # ── Sidebar ────────────────────────────────────────────────────────────────────
 with st.sidebar:
@@ -337,13 +352,13 @@ with st.sidebar:
         st.session_state.api_key = st.secrets["ANTHROPIC_API_KEY"]
         st.success("✅ Ready to style you!", icon="✨")
     else:
-        api_key_input = st.text_input("Anthropic API Key", type="password",
-                                       placeholder="sk-ant-...")
-        if api_key_input:
-            st.session_state.api_key = api_key_input
+        entered = st.text_input("Anthropic API Key", type="password", placeholder="sk-ant-...")
+        if entered:
+            st.session_state.api_key = entered
 
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     st.markdown("**Try asking about:**")
+
     examples = [
         "👔 Job interview outfit, size S, hourglass, $250",
         "💍 Wedding guest look, size L, $180",
@@ -352,22 +367,22 @@ with st.sidebar:
         "✈️ Travel outfit, size M, minimal style, $200",
     ]
     for ex in examples:
-        if st.button(ex, use_container_width=True, key=ex):
-            st.session_state.prefill = ex
+        if st.button(ex, use_container_width=True, key=f"ex_{ex}"):
+            st.session_state.pending_input = ex.split(" ", 1)[1]  # strip emoji
 
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     if st.button("🔄 New Conversation", use_container_width=True):
         st.session_state.messages = []
         st.session_state.history = []
-        st.session_state.last_processed = ""
+        st.session_state.pending_input = ""
         st.rerun()
 
     st.markdown('<div class="divider"></div>', unsafe_allow_html=True)
     st.markdown("""
     <div style='font-size:0.78rem; color:#aaa; line-height:1.6'>
     <b>How it works</b><br>
-    StyleMind uses Agentic AI — it autonomously searches inventory, checks sizes, applies style rules,
-    and builds complete outfits. Watch the tool calls appear as it thinks.
+    StyleMind autonomously searches inventory, checks sizes, applies style rules,
+    and builds complete outfits. Expand the tool log below any response to see it think.
     </div>
     """, unsafe_allow_html=True)
 
@@ -379,48 +394,31 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Render chat history
+# Render full chat history
 for msg in st.session_state.messages:
     if msg["role"] == "user":
         st.markdown(f'<div class="chat-user">{msg["content"]}</div>', unsafe_allow_html=True)
-    else:
+    elif msg["role"] == "assistant":
         st.markdown(f'<div class="chat-assistant">{msg["content"]}</div>', unsafe_allow_html=True)
+    elif msg["role"] == "tool_meta":
+        with st.expander(f"🔍 Agent used {len(msg['content'])} tools to build this recommendation"):
+            for t in msg["content"]:
+                st.markdown(f'<div class="tool-log">{t}</div>', unsafe_allow_html=True)
 
-# Pre-fill from sidebar button clicks
-prefill_value = st.session_state.pop("prefill", "") if "prefill" in st.session_state else ""
+# ── Input form — using st.form eliminates ALL double-trigger issues ────────────
+with st.form(key="chat_form", clear_on_submit=True):
+    col1, col2 = st.columns([5, 1])
+    with col1:
+        typed = st.text_input("", placeholder="e.g. Work dinner outfit, size M, pear body type, budget $200",
+                               label_visibility="collapsed",
+                               value=st.session_state.pending_input)
+    with col2:
+        submitted = st.form_submit_button("Send →", type="primary", use_container_width=True)
 
-# Input row
-col1, col2 = st.columns([5, 1])
-with col1:
-    user_input = st.text_input("", placeholder="e.g. Work dinner outfit, size M, pear body type, budget $200",
-                                value=prefill_value, label_visibility="collapsed", key="input_box")
-with col2:
-    send = st.button("Send →", type="primary", use_container_width=True)
-
-# Handle send — guard with processing flag to prevent double execution on rerun
-if (send or user_input) and user_input.strip():
-    if st.session_state.get("last_processed") == user_input:
-        pass  # Already handled this exact message, skip
-    elif not st.session_state.api_key:
+if submitted and typed.strip():
+    if not st.session_state.api_key:
         st.error("Please enter your Anthropic API key in the sidebar.")
     else:
-        st.session_state.last_processed = user_input
-
-        st.session_state.messages.append({"role": "user", "content": user_input})
-        st.markdown(f'<div class="chat-user">{user_input}</div>', unsafe_allow_html=True)
-
-        with st.spinner("StyleMind is styling your look..."):
-            tool_log = st.empty()
-            response, st.session_state.history, tools_used = run_stylist_agent(
-                user_input, st.session_state.history, tool_log
-            )
-            tool_log.empty()
-
-        st.session_state.messages.append({"role": "assistant", "content": response})
-        st.markdown(f'<div class="chat-assistant">{response}</div>', unsafe_allow_html=True)
-
-        if tools_used:
-            with st.expander(f"🔍 Agent used {len(tools_used)} tools to build this recommendation"):
-                for t in tools_used:
-                    st.markdown(f'<div class="tool-log">{t}</div>', unsafe_allow_html=True)
+        st.session_state.pending_input = typed.strip()
+        process_pending()
         st.rerun()
